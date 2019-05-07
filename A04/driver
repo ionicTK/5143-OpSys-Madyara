@@ -1,0 +1,172 @@
+#!/usr/bin/env python
+
+"""
+Tanaka Madyara
+Advanced OS - 5143
+Virtual Memeory Replacement
+
+"""
+import time
+import queue
+import random
+import os
+import requests
+import sys
+import matplotlib.pyplot as plt
+
+
+class page_frame(object):
+    def __init__(self):
+        self.valid_bit = False  # in memory
+        self.dirty = False      # updated
+        self.last_access = 0    # time stamp
+        self.access_count = 0   # sum of accesses
+
+
+class page_table(object):
+    def __init__(self, virt_mem_page_count, phys_mem_size):
+        self.vm_page_count = virt_mem_page_count
+        self.pm_size = phys_mem_size
+        self.page_table = {}        # dictionary of page_frames
+
+
+class physical_memory(object):
+    def __init__(self, mem_size):
+        self.mem_size = mem_size
+        self.mem_table = {}        # dictionary of page_frames
+
+
+def kvargs(sysargs):
+    args = {}
+
+    # traverse copy of sys.argv skipping first element
+    for val in sysargs[1:]:
+        k, v = val.split('=')
+        args[k] = v
+    return args
+
+
+simDataDirectory = "./vm_snapshots"
+
+if __name__ == '__main__':
+
+    simDataFiles = os.listdir(simDataDirectory)  # getting file names
+    for file in simDataFiles:
+        # basename deletes any prefix up to the last slash character and
+        # returns the result(remove path)
+        fileName = os.path.basename(file)
+        # split file name from file type extension
+        name, ext = fileName.split('.')
+        # capture variables from file name
+        s, run, np, vm, pm = name.split('_')
+        np = int(np)
+        vm = int(vm)
+        pm = int(pm)
+        numfrmz = vm/pm
+        print("\n" + name + ": ")
+        # filepath
+        path = simDataDirectory + '/' + file
+        openFile = open(path, "r")
+        simData = openFile.read().split(" ")
+        simData.pop()  # remove empty line
+
+        # Least Recently Used Alg.
+        faultsLRU = 0
+        size = pm/numfrmz
+        physicalMemory = physical_memory(size)
+        myQueue = []
+        for address in simData:
+            p, add = address.split(',')
+            addr = int(add, 16)
+            if(addr not in physicalMemory.mem_table):
+                faultsLRU += 1
+                if(len(physicalMemory.mem_table) >= size):
+                    key = myQueue[-1]
+                    # remove from physical memory
+                    physicalMemory.mem_table.pop(key)
+                    del myQueue[-1]
+                myQueue.insert(0, addr)
+                pageFrame = page_frame()
+                physicalMemory.mem_table[addr] = pageFrame
+            else:
+                myQueue.remove(addr)
+                myQueue.insert(0, addr)
+        numfrmz += random.random()
+        print("Least Recently Used: " + str(faultsLRU))
+
+        # Least Frequently Used
+        faultsLFU = 0
+        size = pm/numfrmz
+        physicalMemory = physical_memory(size)
+        counterDict = {}
+        for address in simData:
+            p, add = address.split(',')
+            addr = int(add, 16)
+            if(addr not in physicalMemory.mem_table):
+                faultsLFU += 1
+                if(len(physicalMemory.mem_table) >= size):
+                    # find minimum count by assigning a the largest as
+                    # minimum
+                    currentMin = sys.maxsize
+                    minKey = 0
+                    for key in counterDict:
+                        if(counterDict[key] < currentMin):
+                            minKey = key
+                            currentMin = counterDict[key]
+                    counterDict.pop(minKey)
+                    physicalMemory.mem_table.pop(
+                        minKey)
+                if addr not in counterDict.keys():
+                    counterDict[addr] = 0
+                a = counterDict[addr] + 1
+                counterDict[addr] = a
+                pageFrame = page_frame()
+                physicalMemory.mem_table[addr] = pageFrame
+        numfrmz += random.random()
+        print("Least Frequently Used:" + str(faultsLFU))
+
+        # Random Replacement Alg.
+        faultsRand = 0
+        size = pm/numfrmz
+        physicalMemory = physical_memory(size)
+        for address in simData:
+            p, add = address.split(',')
+            addr = int(add, 16)
+            if (addr not in physicalMemory.mem_table):
+                faultsRand += 1
+                if(len(physicalMemory.mem_table) >= size):
+                    physicalMemory.mem_table.pop(random.choice(
+                        list(physicalMemory.mem_table.keys())))  # randomly remove addresses
+                pageFrame = page_frame()
+                physicalMemory.mem_table[addr] = pageFrame
+        numfrmz += random.random()
+        print("RANDOM: " + str(faultsRand))
+
+        # First In, First Out
+        faultsFIFO = 0
+        size = pm/numfrmz
+        physicalMemory = physical_memory(size)
+        myQueue = queue.Queue(maxsize=size)
+        for address in simData:
+            p, add = address.split(',')
+            addr = int(add, 16)
+            if(addr not in physicalMemory.mem_table):
+                faultsFIFO += 1
+                if(len(physicalMemory.mem_table) >= size):
+                    key = myQueue.get()
+                    physicalMemory.mem_table.pop(key)
+                myQueue.put(addr)
+                pageFrame = page_frame()
+                physicalMemory.mem_table[addr] = pageFrame
+        print("First In, First Out: " + str(faultsFIFO))
+
+        # Create Charts using pyplot from
+        # https://matplotlib.org/tutorials/introductory/pyplot.html
+        algNames = ['LRU', 'LFU', 'RAND', 'FIFO']
+        faultValues = [faultsLRU, faultsLFU, faultsRand, faultsFIFO]
+
+        plt.figure(random.random()*1000, figsize=(9, 3))
+
+        plt.bar(algNames, faultValues)
+        plt.suptitle('Algorithm Comparison')
+        plt.savefig('./charts/' + name + '.png')
